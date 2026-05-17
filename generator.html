@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Generador de Etiquetas</title>
+
+<link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+>
+
+<style>
+    body {
+        background: #f3f3f3;
+    }
+
+    .label-card {
+        border-radius: 16px;
+    }
+
+    .barcode-invalid {
+        border-color: #dc3545 !important;
+    }
+
+    .barcode-valid {
+        border-color: #198754 !important;
+    }
+
+    .offer-fields {
+        display: none;
+    }
+
+    .barcode-info {
+        font-size: 0.9rem;
+        font-weight: bold;
+    }
+</style>
+</head>
+
+<body>
+
+<div class="container py-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+
+        <h1 class="h3 mb-0">
+            Generador de Etiquetas
+        </h1>
+
+        <button
+            class="btn btn-primary"
+            id="add-label-btn"
+        >
+            +
+        </button>
+
+    </div>
+
+    <div
+        id="labels-container"
+        class="d-flex flex-column gap-4"
+    ></div>
+
+    <div class="mt-4">
+
+        <button
+            class="btn btn-success btn-lg"
+            id="generate-btn"
+        >
+            Generar HTML
+        </button>
+
+    </div>
+
+</div>
+
+<script>
+
+const labelsContainer =
+    document.getElementById(
+        "labels-container"
+    );
+
+function validateEAN13(code) {
+
+    if (!/^\d{13}$/.test(code)) {
+        return false;
+    }
+
+    const digits =
+        code.split('').map(Number);
+
+    const checksum =
+        digits[12];
+
+    let total = 0;
+
+    for (let i = 0; i < 12; i++) {
+
+        total +=
+            digits[i] *
+            (i % 2 === 0 ? 1 : 3);
+    }
+
+    const calc =
+        (10 - (total % 10)) % 10;
+
+    return calc === checksum;
+}
+
+function detectBarcodeType(code) {
+
+    if (/^\d{13}$/.test(code)) {
+        return "ean13";
+    }
+
+    return "code128";
+}
+
+function tomorrowDate() {
+
+    const tomorrow = new Date();
+
+    tomorrow.setDate(
+        tomorrow.getDate() + 1
+    );
+
+    const day =
+        String(tomorrow.getDate())
+        .padStart(2, '0');
+
+    const month =
+        String(tomorrow.getMonth() + 1)
+        .padStart(2, '0');
+
+    const year =
+        tomorrow.getFullYear();
+
+    return `${year}-${month}-${day}`;
+}
+
+function formatDate(dateString) {
+
+    if (!dateString) {
+        return "";
+    }
+
+    const date =
+        new Date(dateString);
+
+    const day =
+        String(date.getDate())
+        .padStart(2, '0');
+
+    const month =
+        String(date.getMonth() + 1)
+        .padStart(2, '0');
+
+    const year =
+        date.getFullYear();
+
+    return `${day}/${month}/${year}`;
+}
+
+function createLabelCard() {
+
+    const card =
+        document.createElement("div");
+
+    card.className =
+        "card shadow-sm label-card";
+
+    card.innerHTML = `
+        <div class="card-body">
+
+            <div class="row g-3">
+
+                <div class="col-md-4">
+
+                    <label class="form-label">
+                        Nombre
+                    </label>
+
+                    <input
+                        type="text"
+                        class="form-control name-input"
+                    >
+
+                </div>
+
+                <div class="col-md-2">
+
+                    <label class="form-label">
+                        Precio
+                    </label>
+
+                    <input
+                        type="number"
+                        step="0.01"
+                        class="form-control price-input"
+                    >
+
+                </div>
+
+                <div class="col-md-2">
+
+                    <label class="form-label">
+                        Tipo
+                    </label>
+
+                    <select
+                        class="form-select type-input"
+                    >
+                        <option value="regular">
+                            Precio regular
+                        </option>
+
+                        <option value="offer">
+                            Oferta
+                        </option>
+                    </select>
+
+                </div>
+
+                <div class="col-md-2">
+
+                    <label class="form-label">
+                        Unidad
+                    </label>
+
+                    <input
+                        type="text"
+                        maxlength="3"
+                        class="form-control unit-input"
+                        value="PZA"
+                    >
+
+                </div>
+
+                <div class="col-md-6">
+
+                    <label class="form-label">
+                        Código de barras
+                    </label>
+
+                    <input
+                        type="text"
+                        class="form-control barcode-input"
+                    >
+
+                    <div
+                        class="barcode-info mt-1"
+                    ></div>
+
+                </div>
+
+                <div
+                    class="offer-fields row g-3 mt-1"
+                >
+
+                    <div class="col-md-3">
+
+                        <label class="form-label">
+                            Precio anterior
+                        </label>
+
+                        <input
+                            type="number"
+                            step="0.01"
+                            class="form-control old-price-input"
+                        >
+
+                    </div>
+
+                    <div class="col-md-3">
+
+                        <label class="form-label">
+                            Vigencia
+                        </label>
+
+                        <input
+                            type="date"
+                            class="form-control validity-input"
+                            value="${tomorrowDate()}"
+                        >
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+    `;
+
+    labelsContainer.appendChild(card);
+
+    const typeInput =
+        card.querySelector(".type-input");
+
+    const offerFields =
+        card.querySelector(".offer-fields");
+
+    typeInput.addEventListener(
+        "change",
+        () => {
+
+            offerFields.style.display =
+                typeInput.value === "offer"
+                ? "flex"
+                : "none";
+        }
+    );
+
+    const barcodeInput =
+        card.querySelector(".barcode-input");
+
+    const barcodeInfo =
+        card.querySelector(".barcode-info");
+
+    barcodeInput.addEventListener(
+        "input",
+        () => {
+
+            const value =
+                barcodeInput.value.trim();
+
+            const type =
+                detectBarcodeType(value);
+
+            if (type === "ean13") {
+
+                const valid =
+                    validateEAN13(value);
+
+                barcodeInput.classList.remove(
+                    "barcode-valid",
+                    "barcode-invalid"
+                );
+
+                barcodeInput.classList.add(
+                    valid
+                    ? "barcode-valid"
+                    : "barcode-invalid"
+                );
+
+                barcodeInfo.className =
+                    valid
+                    ? "barcode-info mt-1 text-success"
+                    : "barcode-info mt-1 text-danger";
+
+                barcodeInfo.innerHTML =
+                    valid
+                    ? "EAN13 válido"
+                    : "EAN13 inválido";
+
+            } else {
+
+                barcodeInput.classList.remove(
+                    "barcode-invalid"
+                );
+
+                barcodeInput.classList.add(
+                    "barcode-valid"
+                );
+
+                barcodeInfo.className =
+                    "barcode-info mt-1 text-primary";
+
+                barcodeInfo.innerHTML =
+                    "Code128 automático";
+            }
+        }
+    );
+}
+
+function validateAll() {
+
+    const cards =
+        document.querySelectorAll(
+            ".label-card"
+        );
+
+    for (const card of cards) {
+
+        const name =
+            card.querySelector(
+                ".name-input"
+            ).value.trim();
+
+        const price =
+            card.querySelector(
+                ".price-input"
+            ).value.trim();
+
+        const barcode =
+            card.querySelector(
+                ".barcode-input"
+            ).value.trim();
+
+        if (
+            !name ||
+            !price ||
+            !barcode
+        ) {
+
+            alert(
+                "Completa todos los campos obligatorios"
+            );
+
+            return false;
+        }
+
+        if (
+            /^\d{13}$/.test(barcode) &&
+            !validateEAN13(barcode)
+        ) {
+
+            alert(
+                "Hay EAN13 inválidos"
+            );
+
+            return false;
+        }
+    }
+
+    return true;
+}
+
+function generateLabelHTML(data) {
+
+    const type =
+        detectBarcodeType(
+            data.barcode
+        );
+
+    const splitPrice =
+        data.price.split(".");
+
+    const amount =
+        splitPrice[0] || "0";
+
+    const cents =
+        splitPrice[1] || "00";
+
+    if (data.type === "regular") {
+
+        return `
+<div class="page regular-page">
+
+    <div class="label">
+
+        <div class="price">
+
+            <span class="currency">$</span>
+
+            <span class="amount">
+                ${amount}
+            </span>
+
+            <div class="right-side">
+
+                <span class="cents">
+                    ${cents}
+                </span>
+
+                <span class="unit">
+                    ${data.unit}
+                </span>
+
+            </div>
+
+        </div>
+
+        <div class="product-name">
+            ${data.name}
+        </div>
+
+        <div class="barcode-container">
+
+            <img
+                src="http://localhost:80/generate_barcode?code=${encodeURIComponent(data.barcode)}&type=${type}"
+            >
+
+            <div class="ean">
+                ${data.barcode}
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+        `;
+    }
+
+    return `
+<div class="page offer-page">
+
+    <div class="top-space"></div>
+
+    <div class="offer-row">
+
+        ${
+            data.old_price
+            ? `
+            <div>
+                DE:
+                <span class="old-price">
+                    ${data.old_price}
+                </span>
+            </div>
+
+            <div>
+                A:
+            </div>
+            `
+            : `
+            <div>
+                A SOLO:
+            </div>
+            `
+        }
+
+    </div>
+
+    <div class="offer-price-main">
+
+        <span class="currency">$</span>
+
+        <span class="amount">
+            ${amount}
+        </span>
+
+        <div class="right-side">
+
+            <span class="cents">
+                ${cents}
+            </span>
+
+            <span class="unit">
+                ${data.unit}
+            </span>
+
+        </div>
+
+    </div>
+
+    <div class="offer-name">
+        ${data.name}
+    </div>
+
+    <div class="offer-bottom">
+
+        <div class="barcode-small">
+
+            <img
+                src="http://localhost:80/generate_barcode?code=${encodeURIComponent(data.barcode)}&type=${type}"
+            >
+
+            <div class="ean-small">
+                ${data.barcode}
+            </div>
+
+        </div>
+
+        <div class="validity">
+
+            VIGENCIA
+
+            <div>
+                ${formatDate(data.validity)}
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+    `;
+}
+
+document
+.getElementById("generate-btn")
+.addEventListener(
+    "click",
+    () => {
+
+        if (!validateAll()) {
+            return;
+        }
+
+        const cards =
+            document.querySelectorAll(
+                ".label-card"
+            );
+
+        let pagesHTML = "";
+
+        cards.forEach(card => {
+
+            const data = {
+
+                name:
+                    card.querySelector(
+                        ".name-input"
+                    )
+                    .value
+                    .trim()
+                    .toUpperCase(),
+
+                price:
+                    card.querySelector(
+                        ".price-input"
+                    )
+                    .value
+                    .trim(),
+
+                type:
+                    card.querySelector(
+                        ".type-input"
+                    )
+                    .value,
+
+                barcode:
+                    card.querySelector(
+                        ".barcode-input"
+                    )
+                    .value
+                    .trim(),
+
+                unit:
+                    card.querySelector(
+                        ".unit-input"
+                    )
+                    .value
+                    .trim()
+                    .toUpperCase(),
+
+                old_price:
+                    card.querySelector(
+                        ".old-price-input"
+                    )
+                    ?.value
+                    ?.trim(),
+
+                validity:
+                    card.querySelector(
+                        ".validity-input"
+                    )
+                    ?.value
+            };
+
+            pagesHTML +=
+                generateLabelHTML(data);
+        });
+
+        const finalHTML = `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+
+<title>Etiquetas</title>
+
+<style>
+
+@page {
+    size: letter;
+    margin: 0;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+
+    font-family: Arial, sans-serif;
+}
+
+.page {
+    width: 216mm;
+    height: 279mm;
+
+    position: relative;
+
+    overflow: hidden;
+
+    page-break-after: always;
+}
+
+/* REGULAR */
+
+.label {
+    width: 100%;
+    height: 100%;
+
+    position: relative;
+
+    display: flex;
+    flex-direction: column;
+
+    align-items: center;
+    margin-top: 70mm;
+    padding-left: 4mm;
+    padding-right: 4mm;
+
+    padding-top: 8mm;
+}
+
+.price {
+    width: 100%;
+
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+
+    line-height: 0.82;
+
+    margin-bottom: 6mm;
+}
+
+.currency {
+    font-size: 8vw;
+
+    margin-top: 2vw;
+    margin-right: 0.5vw;
+
+    font-weight: bold;
+}
+
+.amount {
+    font-size: 31vw;
+
+    line-height: 0.82;
+
+    letter-spacing: -0.045em;
+
+    font-weight: bold;
+}
+
+.right-side {
+    display: flex;
+    flex-direction: column;
+
+    align-items: flex-start;
+
+    margin-left: 0.5vw;
+    margin-top: 2vw;
+}
+
+.cents {
+    font-size: 7vw;
+
+    line-height: 0.9;
+
+    font-weight: bold;
+}
+
+.unit {
+    font-size: 3.5vw;
+
+    line-height: 1;
+
+    font-weight: normal;
+
+    margin-top: 12vw;
+
+    letter-spacing: 1px;
+}
+
+.product-name {
+    width: 100%;
+
+    text-align: center;
+
+    font-size: 32pt;
+
+    line-height: 1.1;
+
+    font-weight: normal;
+
+    margin-top: 10mm;
+
+    padding-left: 8mm;
+    padding-right: 8mm;
+
+    word-break: break-word;
+}
+
+.barcode-container {
+    width: 100%;
+
+    position: absolute;
+
+    bottom: 120mm;
+
+    display: flex;
+    flex-direction: column;
+
+    align-items: center;
+}
+
+.barcode-container img {
+    width: 100%;
+
+    height: 28mm;
+
+    object-fit: contain;
+}
+
+.ean {
+    margin-top: 4mm;
+
+    font-weight: normal;
+
+    font-size: 18pt;
+
+    letter-spacing: 3px;
+}
+
+/* OFERTA */
+
+.offer-page {
+    display: flex;
+    flex-direction: column;
+
+    align-items: center;
+}
+
+.top-space {
+    width: 100%;
+    height: calc(279mm / 3);
+}
+
+.offer-row {
+    width: 100%;
+
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    padding-left: 60mm;
+    padding-right: 60mm;
+
+    margin-bottom: 3mm;
+
+    font-size: 28pt;
+}
+
+.old-price {
+    text-decoration: line-through;
+}
+
+.offer-price-main {
+    display: flex;
+
+    align-items: flex-start;
+
+    line-height: 0.9;
+
+    margin-bottom: 6mm;
+}
+
+.offer-name {
+    width: 100%;
+
+    text-align: center;
+
+    font-size: 28pt;
+
+    font-weight: normal;
+
+    line-height: 1.1;
+
+    padding-left: 16mm;
+    padding-right: 16mm;
+
+    margin-top: 4mm;
+
+    word-break: break-word;
+}
+
+.offer-bottom {
+    position: absolute;
+
+    left: 16mm;
+    right: 16mm;
+    bottom: 14mm;
+
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+}
+
+.barcode-small {
+    width: 85mm;
+
+    display: flex;
+    flex-direction: column;
+
+    align-items: center;
+}
+
+.barcode-small img {
+    width: 100%;
+    height: 18mm;
+
+    object-fit: contain;
+}
+
+.ean-small {
+    margin-top: 2mm;
+
+    font-size: 14pt;
+
+    letter-spacing: 2px;
+}
+
+.validity {
+    text-align: right;
+
+    font-size: 18pt;
+
+    line-height: 1.2;
+}
+
+</style>
+</head>
+
+<body>
+
+${pagesHTML}
+
+</body>
+</html>
+        `;
+
+        const blob =
+            new Blob(
+                [finalHTML],
+                {
+                    type: "text/html"
+                }
+            );
+
+        const url =
+            URL.createObjectURL(blob);
+
+        window.open(url, "_blank");
+    }
+);
+
+document
+.getElementById("add-label-btn")
+.addEventListener(
+    "click",
+    createLabelCard
+);
+
+createLabelCard();
+
+</script>
+
+</body>
+</html>
