@@ -1,2 +1,6 @@
 fastapi
 uvicorn
+reportlab
+qrcode
+pillow
+python-barcode
