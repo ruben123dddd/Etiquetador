@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sistema de Inventario</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-9ndCyUa6Y5Y5h3yXn6a2u0bKQmG1p6Y5QZ6b6Y5p6Y5p6Y5p6Y5p6Y5p6" crossorigin="anonymous">
+
+<style>
+    *{
+        box-sizing:border-box;
+        font-family:Arial, Helvetica, sans-serif;
+    }
+
+    /* Ocultar pestañas por defecto; se muestran solo en pantallas pequeñas */
+    .tabs{ display:none; }
+
+    body{
+        margin:0;
+        padding:20px;
+        background:#f5f5f5;
+    }
+
+    h1{
+        text-align:center;
+    }
+
+    .container{
+        display:grid;
+        grid-template-columns: 350px 1fr;
+        gap:20px;
+    }
+
+    .panel{
+        background:white;
+        padding:20px;
+        border-radius:10px;
+        box-shadow:0 2px 10px rgba(0,0,0,0.1);
+    }
+
+    input, textarea, button{
+        width:100%;
+        padding:10px;
+        margin-top:10px;
+        border-radius:6px;
+        border:1px solid #ccc;
+    }
+
+    button{
+        background:#111827;
+        color:white;
+        cursor:pointer;
+        border:none;
+    }
+
+    button:hover{
+        opacity:0.9;
+    }
+
+    .search-results{
+        margin-top:10px;
+        max-height:250px;
+        overflow:auto;
+    }
+
+    .result-item{
+        padding:10px;
+        border:1px solid #ddd;
+        border-radius:6px;
+        margin-bottom:8px;
+        background:#fafafa;
+        cursor:pointer;
+    }
+
+    .result-item:hover{
+        background:#eee;
+    }
+
+    .barcode-list{
+        display:flex;
+        flex-direction:column;
+        gap:20px;
+    }
+
+    .barcode-card{
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        gap:20px;
+        border:1px solid #ddd;
+        padding:20px;
+        border-radius:10px;
+        background:white;
+    }
+
+    .barcode-info{
+        flex:1;
+    }
+
+    .barcode-info h3{
+        margin:0;
+    }
+
+    .barcode-svg{
+        text-align:center;
+        min-width:320px;
+    }
+
+    .barcode-svg img{
+        width:300px;
+        height:auto;
+    }
+
+    .barcode-number{
+        margin-top:5px;
+        font-weight:bold;
+        letter-spacing:2px;
+    }
+
+    @media(max-width:900px){
+        .container{
+            grid-template-columns:1fr;
+        }
+
+        .barcode-card{
+            flex-direction:column;
+        }
+
+        /* Mostrar barra de pestañas y esconder paneles por defecto */
+        .tabs{ display:flex; gap:8px; margin-bottom:12px; }
+        .tab-button{ flex:1; padding:10px; border-radius:6px; border:1px solid #ccc; background:white; cursor:pointer; color:black; }
+        .tab-button.active{ background:#111827; color:white; border-color:#111827; }
+
+        /* En móviles mostraremos solo la sección activa */
+        .panel{ display:none; }
+        .panel.active-panel{ display:block; }
+    }
+</style>
+</head>
+<body>
+
+<h1>Sistema de Inventario</h1>
+
+<!-- PESTAÑAS MÓVILES -->
+<div class="tabs" id="mobileTabs">
+    <button class="tab-button active" data-target="addPanel">Agregar</button>
+    <button class="tab-button" data-target="searchPanel">Buscar</button>
+    <button class="tab-button" data-target="listPanel">Lista</button>
+</div>
+
+<div class="container">
+
+    <!-- PANEL IZQUIERDO -->
+    <div>
+
+        <!-- AGREGAR PRODUCTO -->
+        <div class="panel" id="addPanel">
+            <h2>Agregar Producto</h2>
+
+            <form id="addForm">
+                <input type="text" id="name" placeholder="Nombre *" required>
+
+                <input type="text" id="code" placeholder="Código de barras *" required>
+
+                <input type="text" id="alternative_names" placeholder="Nombres alternativos separados por coma">
+
+                <textarea id="description" placeholder="Descripción"></textarea>
+
+                <input type="number" step="0.01" id="price" placeholder="Precio">
+
+                <input type="text" id="unit" placeholder="Unidad (kg, pza, etc)">
+
+                <button type="submit" class="btn btn-dark">Guardar Producto</button>
+            </form>
+
+            <div id="addMessage"></div>
+        </div>
+
+        <!-- BUSCADOR -->
+        <div class="panel" id="searchPanel" style="margin-top:20px;">
+            <h2>Buscar Productos</h2>
+
+            <input type="text" id="searchInput" placeholder="Buscar nombre o código" class="form-control">
+
+            <button onclick="searchItems()" class="btn btn-primary" style="margin-top:10px;">Buscar</button>
+
+            <div class="search-results" id="results"></div>
+        </div>
+
+    </div>
+
+    <!-- LISTA DE CÓDIGOS -->
+    <div class="panel" id="listPanel">
+        <h2>Lista de Productos</h2>
+
+        <div class="barcode-list" id="barcodeList"></div>
+    </div>
+
+</div>
+
+<script>
+
+const API_URL = "http://localhost/items";
+
+const barcodeList = document.getElementById("barcodeList");
+
+
+// ======================
+// AGREGAR PRODUCTO
+// ======================
+
+document.getElementById("addForm").addEventListener("submit", async (e)=>{
+
+    e.preventDefault();
+
+    const data = {
+        name: document.getElementById("name").value,
+        code: document.getElementById("code").value,
+        alternative_names: document.getElementById("alternative_names").value
+            ? document.getElementById("alternative_names").value.split(",").map(x=>x.trim())
+            : [],
+        description: document.getElementById("description").value || null,
+        price: parseFloat(document.getElementById("price").value || 0),
+        unit: document.getElementById("unit").value || "kg"
+    };
+
+    try{
+
+        const formData = new FormData();
+        formData.append('name', data.name);
+        formData.append('code', data.code);
+        formData.append('alternative_names', data.alternative_names.join(','));
+        formData.append('description', data.description || '');
+        formData.append('price', data.price);
+        formData.append('unit', data.unit);
+
+        const response = await fetch(`${API_URL}/`, {
+            method: "POST",
+            body: formData
+        });
+
+        const result = await response.json();
+
+        showAlert('addMessage', result.message || 'Producto agregado', 'success');
+
+        document.getElementById("addForm").reset();
+
+        // Si hay una búsqueda activa, actualizar resultados y mostrar feedback
+        const currentQuery = document.getElementById('searchInput').value;
+        if(currentQuery && currentQuery.trim() !== ''){
+            showAlert('results', 'Nuevo producto agregado — actualizando búsqueda...', 'success', 2000);
+            searchItems();
+        }
+
+    } catch(err){
+        showAlert('addMessage', 'Error al guardar', 'danger');
+        console.error(err);
+    }
+
+});
+
+
+// ======================
+// BUSCAR PRODUCTOS
+// ======================
+
+async function searchItems(){
+
+    const query = document.getElementById("searchInput").value;
+
+    if(!query) return;
+
+    try{
+
+        const response = await fetch(
+            `${API_URL}/search/?query=${encodeURIComponent(query)}`,
+            {
+                method:"POST"
+            }
+        );
+
+        const data = await response.json();
+
+        const resultsDiv = document.getElementById("results");
+
+        resultsDiv.innerHTML = "";
+
+        if(!data.items || data.items.length === 0){
+            resultsDiv.innerHTML = "<p>No se encontraron resultados</p>";
+            return;
+        }
+
+        data.items.forEach(item=>{
+
+            /*
+                SQLITE:
+                0 id
+                1 name
+                2 alternative_names
+                3 description
+                4 price
+                5 code
+                6 unit
+            */
+
+            const div = document.createElement("div");
+            div.className = "result-item";
+
+            div.innerHTML = `
+                <strong>${item[1]}</strong><br>
+                Código: ${item[5]}
+            `;
+
+            div.onclick = ()=> addToBarcodeList(item);
+
+            resultsDiv.appendChild(div);
+
+        });
+
+    }catch(err){
+        console.error(err);
+    }
+
+}
+
+
+// ======================
+// AGREGAR A LISTA
+// ======================
+
+// Debounce helper para búsqueda en tiempo real
+function debounce(func, wait) {
+    let timeout;
+    return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), wait);
+    };
+}
+
+const searchInputEl = document.getElementById("searchInput");
+const debouncedSearch = debounce(() => {
+    const q = searchInputEl.value;
+    if (!q) {
+        document.getElementById("results").innerHTML = "";
+        return;
+    }
+    searchItems();
+}, 300);
+
+searchInputEl.addEventListener("input", debouncedSearch);
+
+function addToBarcodeList(item){
+
+    const name = item[1];
+    const code = item[5];
+
+    const card = document.createElement("div");
+    card.className = "barcode-card";
+
+    card.innerHTML = `
+        <div class="barcode-info">
+            <h3>${name}</h3>
+        </div>
+
+        <div class="barcode-svg">
+            <img
+                src="https://kemayoru.online/generate_barcode?code=${encodeURIComponent(code)}"
+                alt="Código de barras"
+            >
+
+            <div class="barcode-number">
+                ${code}
+            </div>
+        </div>
+    `;
+
+    barcodeList.appendChild(card);
+
+}
+
+// Helper para crear alertas Bootstrap
+function showAlert(targetId, message, type='success', timeout=4000){
+    const target = document.getElementById(targetId);
+    if(!target) return;
+    const id = 'alert-' + Date.now();
+    target.innerHTML = `
+        <div id="${id}" class="alert alert-${type} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    `;
+    if(timeout > 0){
+        setTimeout(()=>{
+            const el = document.getElementById(id);
+            if(el){
+                el.classList.remove('show');
+                el.classList.add('hide');
+                el.remove();
+            }
+        }, timeout);
+    }
+}
+
+// ======================
+// MOBILE TABS BEHAVIOR
+// ======================
+
+function showPanelById(targetId){
+    const panels = document.querySelectorAll('.panel');
+    panels.forEach(p=>{
+        if(window.innerWidth <= 900){
+            if(p.id === targetId) p.classList.add('active-panel');
+            else p.classList.remove('active-panel');
+        } else {
+            p.classList.remove('active-panel');
+        }
+    });
+
+    const buttons = document.querySelectorAll('.tab-button');
+    buttons.forEach(b=>{
+        if(b.getAttribute('data-target') === targetId) b.classList.add('active');
+        else b.classList.remove('active');
+    });
+}
+
+document.querySelectorAll('.tab-button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+        const target = btn.getAttribute('data-target');
+        showPanelById(target);
+    });
+});
+
+// On load, show Add panel on small screens
+window.addEventListener('load', ()=>{
+    if(window.innerWidth <= 900){
+        showPanelById('addPanel');
+    }
+});
+
+window.addEventListener('resize', ()=>{
+    // when resizing larger, make sure panels are visible
+    if(window.innerWidth > 900){
+        document.querySelectorAll('.panel').forEach(p=> p.classList.remove('active-panel'));
+        document.querySelectorAll('.tab-button').forEach(b=> b.classList.remove('active'));
+    } else {
+        // ensure at least one panel is active
+        const anyActive = Array.from(document.querySelectorAll('.panel')).some(p=> p.classList.contains('active-panel'));
+        if(!anyActive) showPanelById('addPanel');
+    }
+});
+
+</script>
+
+</script>
+
+<!-- Bootstrap Bundle JS (includes Popper) -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-ENjdO4Dr2bkBIFxQpeoYz1HIcje39Wm4jDKdf19U8gI4ddQ3GYNS7NTKfAdVQSZe" crossorigin="anonymous"></script>
+
+</body>
+</html>
