@@ -4,10 +4,18 @@ import fastapi
 from reportlab.pdfgen import canvas
 import qrcode
 import barcode
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from pathlib import Path
+from codigos.app import app as codigos_router, initialize_database
+
 BASE_DIR = Path(__file__).parent
 app = fastapi.FastAPI()
+app.include_router(codigos_router, prefix="/codigos")
+
+@app.on_event("startup")
+def startup_event():
+    initialize_database()
+
 def safe_ean13(code):
     if len(code) == 13:
         try:
@@ -33,14 +41,13 @@ def safe_ean13(code):
         raise ValueError("EAN-13 code must contain only digits")
     return code
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/")
 def read_root():
+    return FileResponse(BASE_DIR / "index.html")
 
-    generator_path = BASE_DIR / "generator.html"
-
-    return generator_path.read_text(
-        encoding="utf-8"
-    )
+@app.get("/generator")
+def generator_page():
+    return FileResponse(BASE_DIR / "generator.html")
 
 @app.get("/generate_barcode")
 def generate_barcode(code: str,type: str = "ean13"):
