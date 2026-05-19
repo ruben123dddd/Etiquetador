@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from barcode import ean
 import uvicorn
 import fastapi
